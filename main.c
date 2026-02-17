@@ -92,39 +92,39 @@ int main() {
                 {
                     ms_Pos grid_pos = {0};
                     if (ms_MouseGridPos(&grid_pos)) {
-                        ms_Cell* field = &game_data[grid_pos.y * ROWS + grid_pos.x];
-                        if (!field->revealed && !field->flagged) {
+                        ms_Cell* cell = &game_data[grid_pos.y * ROWS + grid_pos.x];
+                        if (!cell->revealed && !cell->flagged) {
                             DrawRectangle(GAME_START_X+grid_pos.x*GRID_SIZE, GAME_START_Y+grid_pos.y*GRID_SIZE, GRID_SIZE, GRID_SIZE, LIGHTGRAY);
                         }
 
-                        if (IsMouseButtonPressed(MOUSE_LEFT_BUTTON) && !field->revealed && !field->flagged) {
-                            if (first_cell == NULL && field->value == MINE) {
+                        if (IsMouseButtonPressed(MOUSE_LEFT_BUTTON) && !cell->revealed && !cell->flagged) {
+                            if (first_cell == NULL && cell->value == MINE) {
                                 first_cell = &grid_pos;
                                 game_state = ms_FIRST_CLICK_MINE;
                                 break;
                             }
                             first_cell = &grid_pos;
-                            field->revealed = true;
+                            cell->revealed = true;
                             // TODO: handle game over
-                            if (field->value == MINE) {
+                            if (cell->value == MINE) {
                                 game_state = ms_GAME_OVER;
                                 for (int y = 0; y < ROWS; y++) {
                                     for (int x = 0; x < ROWS; x++) {
-                                        ms_Cell* field = &game_data[y * ROWS + x];
-                                        if (field->value == MINE) {
-                                            field->revealed = true;
+                                        ms_Cell* cell = &game_data[y * ROWS + x];
+                                        if (cell->value == MINE) {
+                                            cell->revealed = true;
                                         }
                                     }
                                 }
-                            } else if (field->value == 0) {
+                            } else if (cell->value == 0) {
                                 ms_ExpandZeros(grid_pos);
                             }
                         }
 
                         if (IsKeyPressed(KEY_M) || IsMouseButtonPressed(MOUSE_RIGHT_BUTTON)) {
-                            if (!field->revealed) {
-                                field->flagged = !field->flagged;
-                                mines_left += field->flagged ? -1 : 1;
+                            if (!cell->revealed) {
+                                cell->flagged = !cell->flagged;
+                                mines_left += cell->flagged ? -1 : 1;
                             }
                         }
                     }
@@ -179,9 +179,9 @@ int main() {
                         update_time = true;
                         mines_left = MINE_COUNT;
                     } while (game_data[first_cell->y * ROWS + first_cell->x].value == MINE);
-                    ms_Cell* field = &game_data[first_cell->y * ROWS + first_cell->x];
-                    field->revealed = true;
-                    if (field->value == 0) {
+                    ms_Cell* cell = &game_data[first_cell->y * ROWS + first_cell->x];
+                    cell->revealed = true;
+                    if (cell->value == 0) {
                         ms_ExpandZeros(*first_cell);
                     }
                     first_cell = NULL;
@@ -217,20 +217,20 @@ bool ms_MouseGridPos(ms_Pos* grid_pos) {
 void ms_DrawGameState() {
     for (int y = 0; y < ROWS; y++) {
         for (int x = 0; x < ROWS; x++) {
-            ms_Cell field = game_data[y * ROWS + x];
+            ms_Cell cell = game_data[y * ROWS + x];
             int posX = GAME_START_X + x * GRID_SIZE;
             int posY = GAME_START_Y + y * GRID_SIZE;
-            if (show_debug || field.revealed) {
-                if (field.value == MINE) {
+            if (show_debug || cell.revealed) {
+                if (cell.value == MINE) {
                     DrawCircle( posX + GRID_SIZE/2, posY + GRID_SIZE/2, (float)GRID_SIZE/3, RED);
                 } else {
                     char tmp[2] = {0};
-                    sprintf(tmp, "%d", field.value);
+                    sprintf(tmp, "%d", cell.value);
                     int text_size = MeasureText(tmp, FONT_SIZE);
                     DrawText(tmp, posX + (GRID_SIZE - text_size) / 2, posY + (GRID_SIZE - FONT_SIZE) / 2, FONT_SIZE, DARKGRAY);
                 }
             }
-            if (!show_debug && field.flagged) {
+            if (!show_debug && cell.flagged) {
                 char* txt = "M";
                 int text_size = MeasureText(txt, FONT_SIZE);
                 DrawText(txt, posX + (GRID_SIZE - text_size) / 2, posY + (GRID_SIZE - FONT_SIZE) / 2, FONT_SIZE, RED);
@@ -257,8 +257,8 @@ void ms_ExpandZeros(ms_Pos pos) {
 
     while (index >= 0) {
         ms_Pos cur = queue[index--];
-        ms_Cell* field = &game_data[cur.y * ROWS + cur.x];
-        field->revealed = true;
+        ms_Cell* cell = &game_data[cur.y * ROWS + cur.x];
+        cell->revealed = true;
         for (int dy = -1; dy <= 1; dy++) {
             for (int dx = -1; dx <= 1; dx++) {
                 if (dy == 0 && dx == 0) {
@@ -268,12 +268,12 @@ void ms_ExpandZeros(ms_Pos pos) {
                 if (new_pos.y < 0 || new_pos.y >= ROWS || new_pos.x < 0 || new_pos.x >= ROWS) {
                     continue;
                 }
-                ms_Cell* field = &game_data[new_pos.y * ROWS + new_pos.x];
-                if (!field->revealed && !field->flagged && field->value == 0) {
+                ms_Cell* cell = &game_data[new_pos.y * ROWS + new_pos.x];
+                if (!cell->revealed && !cell->flagged && cell->value == 0) {
                     queue[++index] = new_pos;
                 }
-                if (!field->flagged) {
-                    field->revealed = true;
+                if (!cell->flagged) {
+                    cell->revealed = true;
                 }
             }
         }
@@ -341,8 +341,8 @@ void ms_InitGameData() {
 bool ms_CheckGameWon() {
     for (int y = 0; y < ROWS; y++) {
         for (int x = 0; x < ROWS; x++) {
-            ms_Cell field = game_data[y * ROWS + x];
-            if (field.value != MINE && !field.revealed) {
+            ms_Cell cell = game_data[y * ROWS + x];
+            if (cell.value != MINE && !cell.revealed) {
                 return false;
             }
         }
