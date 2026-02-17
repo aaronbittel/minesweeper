@@ -46,6 +46,7 @@ typedef enum {
     ms_GAME_OVER,
     ms_GAME_WON,
     ms_NEW_GAME,
+    ms_FIRST_CLICK_MINE,
 } ms_GameState;
 
 ms_GameState game_state = ms_PLAYING;
@@ -55,6 +56,7 @@ int mines_left = MINE_COUNT;
 long start_time;
 long end_time;
 bool update_time = true;
+ms_Pos* first_cell = NULL;
 
 void ms_InitGameData();
 void ms_DrawGrid();
@@ -96,6 +98,12 @@ int main() {
                         }
 
                         if (IsMouseButtonPressed(MOUSE_LEFT_BUTTON) && !field->revealed && !field->flagged) {
+                            if (first_cell == NULL && field->value == MINE) {
+                                first_cell = &grid_pos;
+                                game_state = ms_FIRST_CLICK_MINE;
+                                break;
+                            }
+                            first_cell = &grid_pos;
                             field->revealed = true;
                             // TODO: handle game over
                             if (field->value == MINE) {
@@ -157,6 +165,26 @@ int main() {
                     end_time = 0;
                     update_time = true;
                     mines_left = MINE_COUNT;
+                    first_cell = NULL;
+                }
+                break;
+            case ms_FIRST_CLICK_MINE:
+                {
+                    do {
+                        memset(game_data, 0, sizeof(game_data));
+                        ms_InitGameData();
+                        start_time = time(NULL);
+                        game_state = ms_PLAYING;
+                        end_time = 0;
+                        update_time = true;
+                        mines_left = MINE_COUNT;
+                    } while (game_data[first_cell->y * ROWS + first_cell->x].value == MINE);
+                    ms_Cell* field = &game_data[first_cell->y * ROWS + first_cell->x];
+                    field->revealed = true;
+                    if (field->value == 0) {
+                        ms_ExpandZeros(*first_cell);
+                    }
+                    first_cell = NULL;
                 }
                 break;
         }
