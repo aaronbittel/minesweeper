@@ -11,8 +11,9 @@
 
 #define GRID_SIZE          40
 #define ROWS               9
+#define COLUMNS            9
 #define MINE_COUNT         10
-#define GAME_WIDTH         ((ROWS) * (GRID_SIZE))
+#define GAME_WIDTH         ((COLUMNS) * (GRID_SIZE))
 #define GAME_HEIGHT        ((ROWS) * (GRID_SIZE))
 
 #define PADDING            10
@@ -50,7 +51,7 @@ typedef enum {
 } ms_GameState;
 
 ms_GameState game_state = ms_PLAYING;
-ms_Cell game_data[ROWS * ROWS] = {0};
+ms_Cell game_data[ROWS * COLUMNS] = {0};
 bool show_debug = false;
 int mines_left = MINE_COUNT;
 long start_time;
@@ -92,7 +93,7 @@ int main() {
                 {
                     ms_Pos grid_pos = {0};
                     if (ms_MouseGridPos(&grid_pos)) {
-                        ms_Cell* cell = &game_data[grid_pos.y * ROWS + grid_pos.x];
+                        ms_Cell* cell = &game_data[grid_pos.y * COLUMNS + grid_pos.x];
                         if (!cell->revealed && !cell->flagged) {
                             DrawRectangle(GAME_START_X+grid_pos.x*GRID_SIZE, GAME_START_Y+grid_pos.y*GRID_SIZE, GRID_SIZE, GRID_SIZE, LIGHTGRAY);
                         }
@@ -109,8 +110,8 @@ int main() {
                             if (cell->value == MINE) {
                                 game_state = ms_GAME_OVER;
                                 for (int y = 0; y < ROWS; y++) {
-                                    for (int x = 0; x < ROWS; x++) {
-                                        ms_Cell* cell = &game_data[y * ROWS + x];
+                                    for (int x = 0; x < COLUMNS; x++) {
+                                        ms_Cell* cell = &game_data[y * COLUMNS + x];
                                         if (cell->value == MINE) {
                                             cell->revealed = true;
                                         }
@@ -178,8 +179,8 @@ int main() {
                         end_time = 0;
                         update_time = true;
                         mines_left = MINE_COUNT;
-                    } while (game_data[first_cell->y * ROWS + first_cell->x].value == MINE);
-                    ms_Cell* cell = &game_data[first_cell->y * ROWS + first_cell->x];
+                    } while (game_data[first_cell->y * COLUMNS + first_cell->x].value == MINE);
+                    ms_Cell* cell = &game_data[first_cell->y * COLUMNS + first_cell->x];
                     cell->revealed = true;
                     if (cell->value == 0) {
                         ms_ExpandZeros(*first_cell);
@@ -205,7 +206,7 @@ bool ms_MouseGridPos(ms_Pos* grid_pos) {
     mouse_pos.y -= GAME_START_Y;
     mouse_pos.x -= GAME_START_X;
 
-    if (mouse_pos.y < 0 || mouse_pos.y >= ROWS * GRID_SIZE || mouse_pos.x < 0 || mouse_pos.x >= ROWS * GRID_SIZE) {
+    if (mouse_pos.y < 0 || mouse_pos.y >= ROWS * GRID_SIZE || mouse_pos.x < 0 || mouse_pos.x >= COLUMNS * GRID_SIZE) {
         return false;
     }
 
@@ -216,8 +217,8 @@ bool ms_MouseGridPos(ms_Pos* grid_pos) {
 
 void ms_DrawGameState() {
     for (int y = 0; y < ROWS; y++) {
-        for (int x = 0; x < ROWS; x++) {
-            ms_Cell cell = game_data[y * ROWS + x];
+        for (int x = 0; x < COLUMNS; x++) {
+            ms_Cell cell = game_data[y * COLUMNS + x];
             int posX = GAME_START_X + x * GRID_SIZE;
             int posY = GAME_START_Y + y * GRID_SIZE;
             if (show_debug || cell.revealed) {
@@ -241,10 +242,12 @@ void ms_DrawGameState() {
 
 
 void ms_DrawGrid() {
-    for (int i = 0; i < ROWS + 1; i++) {
+    for (int i = 0; i < COLUMNS + 1; i++) {
         Vector2 startPosV = { .x = GAME_START_X + i * GRID_SIZE, .y = GAME_START_Y };
         Vector2 endPosV = { .x = GAME_START_X + i * GRID_SIZE, .y = GAME_START_Y + GAME_HEIGHT };
         DrawLineEx(startPosV, endPosV, 3, BLACK);
+    }
+    for (int i = 0; i < ROWS + 1; i++) {
         Vector2 startPosH = { .x = GAME_START_X, .y = GAME_START_Y + i * GRID_SIZE };
         Vector2 endPosH = { .x = GAME_START_X + GAME_WIDTH, .y = GAME_START_Y + i * GRID_SIZE };
         DrawLineEx(startPosH, endPosH, 3, BLACK);
@@ -252,12 +255,12 @@ void ms_DrawGrid() {
 }
 
 void ms_ExpandZeros(ms_Pos pos) {
-    ms_Pos queue[ROWS * ROWS] = { pos };
+    ms_Pos queue[ROWS * COLUMNS] = { pos };
     int index = 0;
 
     while (index >= 0) {
         ms_Pos cur = queue[index--];
-        ms_Cell* cell = &game_data[cur.y * ROWS + cur.x];
+        ms_Cell* cell = &game_data[cur.y * COLUMNS + cur.x];
         cell->revealed = true;
         for (int dy = -1; dy <= 1; dy++) {
             for (int dx = -1; dx <= 1; dx++) {
@@ -265,10 +268,10 @@ void ms_ExpandZeros(ms_Pos pos) {
                     continue;
                 }
                 ms_Pos new_pos = { .x = cur.x + dx, .y = cur.y + dy };
-                if (new_pos.y < 0 || new_pos.y >= ROWS || new_pos.x < 0 || new_pos.x >= ROWS) {
+                if (new_pos.y < 0 || new_pos.y >= ROWS || new_pos.x < 0 || new_pos.x >= COLUMNS) {
                     continue;
                 }
-                ms_Cell* cell = &game_data[new_pos.y * ROWS + new_pos.x];
+                ms_Cell* cell = &game_data[new_pos.y * COLUMNS + new_pos.x];
                 if (!cell->revealed && !cell->flagged && cell->value == 0) {
                     queue[++index] = new_pos;
                 }
@@ -300,8 +303,8 @@ void ms_InitGameData() {
     ms_Pos mines[MINE_COUNT] = {0};
     size_t cur = 0;
     while (cur < MINE_COUNT) {
-        int x = rand() % ROWS;
         int y = rand() % ROWS;
+        int x = rand() % COLUMNS;
         bool foundNew = true;
         for (size_t i = 0; i < cur; i++) {
             ms_Pos mine = mines[i];
@@ -317,7 +320,7 @@ void ms_InitGameData() {
 
     for (size_t i = 0; i < MINE_COUNT; i++) {
         ms_Pos mine = mines[i];
-        game_data[mine.y * ROWS + mine.x].value = MINE;
+        game_data[mine.y * COLUMNS + mine.x].value = MINE;
         // mark neighbours
         for (int dy = -1; dy <= 1; dy++) {
             for (int dx = -1; dx <= 1; dx++) {
@@ -326,13 +329,13 @@ void ms_InitGameData() {
                 }
                 ms_Pos new_pos = { .x = mine.x + dx, .y = mine.y + dy };
                 // out-of-bounds
-                if (new_pos.y < 0 || new_pos.y >= ROWS || new_pos.x < 0 || new_pos.x >= ROWS) {
+                if (new_pos.y < 0 || new_pos.y >= ROWS || new_pos.x < 0 || new_pos.x >= COLUMNS) {
                     continue;
                 }
-                if (game_data[new_pos.y * ROWS + new_pos.x].value == MINE) {
+                if (game_data[new_pos.y * COLUMNS + new_pos.x].value == MINE) {
                     continue;
                 }
-                game_data[new_pos.y * ROWS + new_pos.x].value++;
+                game_data[new_pos.y * COLUMNS + new_pos.x].value++;
             }
         }
     }
@@ -340,8 +343,8 @@ void ms_InitGameData() {
 
 bool ms_CheckGameWon() {
     for (int y = 0; y < ROWS; y++) {
-        for (int x = 0; x < ROWS; x++) {
-            ms_Cell cell = game_data[y * ROWS + x];
+        for (int x = 0; x < COLUMNS; x++) {
+            ms_Cell cell = game_data[y * COLUMNS + x];
             if (cell.value != MINE && !cell.revealed) {
                 return false;
             }
