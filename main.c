@@ -314,7 +314,7 @@ bool ms_CheckGameWon() {
     for (int y = 0; y < ROWS; y++) {
         for (int x = 0; x < ROWS; x++) {
             ms_Cell field = game_data[y * ROWS + x];
-            if (!field.revealed && !field.flagged) {
+            if (field.value != MINE && !field.revealed) {
                 return false;
             }
         }
