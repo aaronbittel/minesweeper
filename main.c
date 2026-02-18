@@ -9,45 +9,64 @@
 #include "raylib.h"
 
 #define GAME_MENU_HEIGHT        60
+#define GAME_STATUS_HEIGHT 60
 
-#define GRID_SIZE          40
-#define ROWS               9
-#define COLUMNS            9
-#define MINE_COUNT         10
-#define GAME_WIDTH         ((COLUMNS) * (GRID_SIZE))
-#define GAME_HEIGHT        ((ROWS) * (GRID_SIZE))
+#define MENU_WIDTH 400
+#define MENU_HEIGHT 300
+
+#define FONT_SIZE          32
+#define MENU_FONT_SIZE     24
+
+#define BEGINNER_GRID_SIZE   40
+#define BEGINNER_FONT_SIZE FONT_SIZE
+#define BEGINNER_ROWS         9
+#define BEGINNER_COLUMNS      9
+#define BEGINNER_MINE_COUNT  10
+
+#define INTERMEDIATE_FONT_SIZE   32
+#define INTERMEDIATE_GRID_SIZE   36
+#define INTERMEDIATE_ROWS        16
+#define INTERMEDIATE_COLUMNS     16
+#define INTERMEDIATE_MINE_COUNT  40
+
+#define EXPERT_FONT_SIZE   30
+#define EXPERT_GRID_SIZE   30
+#define EXPERT_ROWS        16
+#define EXPERT_COLUMNS     30
+#define EXPERT_MINE_COUNT  99
 
 #define PADDING            10
 
 #define GAME_START_Y       ((GAME_MENU_HEIGHT) + (PADDING))
 #define GAME_START_X       (PADDING)
 
-#define GAME_STATUS_HEIGHT 60
-#define GAME_STATUS_START_Y ((GAME_START_Y) + (GAME_HEIGHT))
-
-#define WIDTH              ((GAME_WIDTH) + 2 * (PADDING))
-#define HEIGHT             ((GAME_HEIGHT) + 2 * (PADDING) + (GAME_MENU_HEIGHT) + (GAME_STATUS_HEIGHT))
-
-#define FONT_SIZE          32
-#define MENU_FONT_SIZE     24
 
 #define MINE               -1
 
-#define MENU_WIDTH 400
-#define MENU_HEIGHT 300
 
 #define ARRAY_LEN(arr) (sizeof(arr) / sizeof((arr)[0]))
 
-typedef struct {
-    int rows;
-    int cols;
-} ms_Game;
 
 typedef struct {
     int  value;
     bool flagged;
     bool revealed;
 } ms_Cell;
+
+typedef struct {
+    ms_Cell game_data[EXPERT_ROWS * EXPERT_COLUMNS];
+    int rows;
+    int cols;
+    int mines_left;
+    bool first_click_done;
+} ms_Game;
+
+typedef struct {
+    int width;
+    int height;
+    int grid_size;
+    int font_size;
+} ms_RenderConfig;
 
 typedef struct {
     int x, y;
@@ -73,17 +92,27 @@ typedef struct {
     Color highlight;
 } ms_MenuItem;
 
+typedef enum {
+    ms_BEGINNER = 0,
+    ms_INTERMEDIATE,
+    ms_EXPERT,
+} ms_Difficulty;
+
 ms_GameState game_state = ms_PLAYING;
 ms_GameScreen current_screen = ms_ScreenMenu;
-ms_Cell game_data[ROWS * COLUMNS] = {0};
 bool show_debug = false;
-int mines_left = MINE_COUNT;
-long start_time;
-long end_time;
-bool update_time = true;
-ms_Pos* first_cell = NULL;
 
-void ms_InitGameData();
+ms_Game game = {0};
+ms_RenderConfig config = {0};
+
+long start_time;
+
+void ms_InitGame(int rows, int columns, int mines);
+void ms_InitBeginnerGame();
+void ms_InitIntermediateGame();
+void ms_InitExpertGame();
+
+void ms_InitGameData(ms_Pos *first_click_pos);
 void ms_DrawGrid();
 void ms_DrawGameState();
 void ms_DrawGameMenu(float game_time);
@@ -92,8 +121,18 @@ void ms_InitMenuItems(ms_MenuItem items[3], int beginn_Y);
 ms_Cell* ms_RevealCell(ms_Pos *pos);
 int ms_FlagCell(ms_Pos *pos);
 void ms_ExpandZeros(ms_Pos pos);
+
 bool ms_GetMouseGridPos(ms_Pos* pos);
 bool ms_CheckGameWon();
+int ms_GetGameStatusStartY();
+bool ms_PosEqual(ms_Pos *p1, ms_Pos *p2);
+ms_Cell *ms_AtPos(ms_Pos *pos);
+ms_Cell *ms_AtXY(int x, int y);
+
+int ms_GetTotalWindowWidth();
+int ms_GetTotalWindowHeight();
+
+inline ms_Pos ms_PosXY(int x, int y);
 
 
 int main() {
@@ -118,7 +157,7 @@ int main() {
     ms_InitMenuItems(items, current_Y);
     bool locked_in = false;
 
-    size_t selected_item = 0;
+    ms_Difficulty selected_difficulty = ms_BEGINNER;
 
     float highlight_timer = 0.0f;
     const float highligh_duration = 0.12f;
@@ -126,7 +165,6 @@ int main() {
     // gameplay
 
     srand(time(NULL));
-    ms_InitGameData();
 
     ms_Pos grid_pos = {0};
     bool mouse_inside_grid = false;
@@ -141,7 +179,7 @@ int main() {
                         if (mouseY >= items[i].y-MENU_FONT_SIZE/2 &&
                             mouseY <= items[i].y + MENU_FONT_SIZE*2)
                         {
-                            selected_item = i;
+                            selected_difficulty = i;
                         }
                     }
                     if (IsKeyPressed(KEY_ENTER) ||
@@ -152,9 +190,27 @@ int main() {
                     }
                     if (locked_in) highlight_timer -= GetFrameTime();
                     if (highlight_timer < 0) {
+                        switch (selected_difficulty) {
+                            case ms_BEGINNER: ms_InitBeginnerGame(); break;
+                            case ms_INTERMEDIATE: ms_InitIntermediateGame(); break;
+                            case ms_EXPERT: ms_InitExpertGame(); break;
+                            // TODO: add support for custom values
+                            default: assert(0 && "unreachable");
+                        }
                         highlight_timer = 0;
                         locked_in = false;
-                        SetWindowSize(WIDTH, HEIGHT);
+
+                        SetWindowSize(
+                            2 * PADDING + config.width,
+                            2 * PADDING + GAME_MENU_HEIGHT + config.height + GAME_STATUS_HEIGHT
+                        );
+                        int monitor = GetCurrentMonitor();
+                        int monitor_width =  GetMonitorWidth(monitor);
+                        int monitor_height = GetMonitorHeight(monitor);
+                        SetWindowPosition(
+                            (monitor_width - ms_GetTotalWindowWidth()) / 2,
+                            (monitor_height - ms_GetTotalWindowHeight()) / 2
+                        );
                         current_screen = ms_ScreenGame;
                         game_state = ms_PLAYING;
                     }
@@ -174,6 +230,10 @@ int main() {
                                 mouse_inside_grid = ms_GetMouseGridPos(&grid_pos);
                                 if (mouse_inside_grid) {
                                     if (IsMouseButtonPressed(MOUSE_LEFT_BUTTON)) {
+                                        if (!game.first_click_done) {
+                                            ms_InitGameData(&grid_pos);
+                                            game.first_click_done = true;
+                                        }
                                         ms_Cell *cell = ms_RevealCell(&grid_pos);
                                         if (cell) {
                                             if (cell->value == 0) {
@@ -182,23 +242,32 @@ int main() {
                                                 game_state = ms_GAME_OVER;
                                             }
                                         }
-                                        if (ms_CheckGameWon()) {
-                                            game_state = ms_GAME_WON;
-                                        }
                                     }
                                     if (IsMouseButtonPressed(MOUSE_RIGHT_BUTTON) ||
                                         IsKeyPressed(KEY_M))
                                     {
-                                        mines_left += ms_FlagCell(&grid_pos);
+                                        game.mines_left += ms_FlagCell(&grid_pos);
+                                    }
+                                    if (ms_CheckGameWon()) {
+                                        game_state = ms_GAME_WON;
                                     }
                                 }
                             } break;
                         case ms_GAME_OVER:
                         case ms_GAME_WON:
                             {
+                                if (IsKeyPressed(KEY_R)) {
+                                    game_state = ms_NEW_GAME;
+                                }
                             } break;
                         case ms_NEW_GAME:
                             {
+                                switch (selected_difficulty) {
+                                    case ms_BEGINNER: ms_InitBeginnerGame(); break;
+                                    case ms_INTERMEDIATE: ms_InitIntermediateGame(); break;
+                                    case ms_EXPERT: ms_InitExpertGame(); break;
+                                    default: assert(0 && "unreachable");
+                                }
                             } break;
                     }
                 } break;
@@ -221,7 +290,7 @@ int main() {
                              submenu_title_Y,
                              MENU_FONT_SIZE, DARKGRAY);
                     for (size_t i = 0; i < 3; i++) {
-                        ms_DrawItem(&items[i], selected_item == i, highlight_timer > 0);
+                        ms_DrawItem(&items[i], selected_difficulty == i, highlight_timer > 0);
                     }
                 } break;
             case ms_ScreenGame:
@@ -233,9 +302,9 @@ int main() {
                         case ms_PLAYING:
                             {
                                 if (mouse_inside_grid) {
-                                    ms_Cell* cell = &game_data[grid_pos.y * COLUMNS + grid_pos.x];
+                                    ms_Cell* cell = ms_AtPos(&grid_pos);
                                     if (!cell->revealed && !cell->flagged) {
-                                        DrawRectangle(GAME_START_X+grid_pos.x*GRID_SIZE, GAME_START_Y+grid_pos.y*GRID_SIZE, GRID_SIZE, GRID_SIZE, LIGHTGRAY);
+                                        DrawRectangle(GAME_START_X+grid_pos.x*config.grid_size, GAME_START_Y+grid_pos.y*config.grid_size, config.grid_size, config.grid_size, LIGHTGRAY);
                                     }
                                 }
                             } break;
@@ -243,13 +312,21 @@ int main() {
                             {
                                 char* msg = "Game Over!";
                                 int text_size = MeasureText(msg, FONT_SIZE);
-                                DrawText(msg, (WIDTH - text_size) / 2, GAME_STATUS_START_Y + (HEIGHT - GAME_STATUS_START_Y - FONT_SIZE) / 2, FONT_SIZE, RED);
+                                DrawText(
+                                    msg,
+                                    (config.width - text_size) / 2,
+                                    ms_GetGameStatusStartY(),
+                                    FONT_SIZE, RED);
                             } break;
                         case ms_GAME_WON:
                             {
                                 char* msg = "Congrats, Game Won!";
                                 int text_size = MeasureText(msg, FONT_SIZE);
-                                DrawText(msg, (WIDTH - text_size) / 2 , GAME_STATUS_START_Y + (HEIGHT - GAME_STATUS_START_Y - FONT_SIZE) / 2, FONT_SIZE, GREEN);
+                                DrawText(
+                                    msg,
+                                    (config.width - text_size) / 2,
+                                    ms_GetGameStatusStartY(),
+                                    FONT_SIZE, GREEN);
                             } break;
                         case ms_NEW_GAME:
                             {
@@ -275,61 +352,68 @@ bool ms_GetMouseGridPos(ms_Pos* grid_pos) {
     mouse_pos.y -= GAME_START_Y;
     mouse_pos.x -= GAME_START_X;
 
-    if (mouse_pos.y < 0 || mouse_pos.y >= ROWS * GRID_SIZE || mouse_pos.x < 0 || mouse_pos.x >= COLUMNS * GRID_SIZE) {
+    if (mouse_pos.y < 0 || mouse_pos.y >= game.rows * config.grid_size || mouse_pos.x < 0 || mouse_pos.x >= game.cols * config.grid_size) {
         return false;
     }
 
-    grid_pos->y = mouse_pos.y / GRID_SIZE;
-    grid_pos->x = mouse_pos.x / GRID_SIZE;
+    grid_pos->y = mouse_pos.y / config.grid_size;
+    grid_pos->x = mouse_pos.x / config.grid_size;
     return true;
 }
 
 void ms_DrawGameState() {
-    for (int y = 0; y < ROWS; y++) {
-        for (int x = 0; x < COLUMNS; x++) {
-            ms_Cell cell = game_data[y * COLUMNS + x];
-            int posX = GAME_START_X + x * GRID_SIZE;
-            int posY = GAME_START_Y + y * GRID_SIZE;
-            if (show_debug || cell.revealed) {
-                if (cell.value == MINE) {
-                    DrawCircle( posX + GRID_SIZE/2, posY + GRID_SIZE/2, (float)GRID_SIZE/3, RED);
+    for (int y = 0; y < game.rows; y++) {
+        for (int x = 0; x < game.cols; x++) {
+            ms_Cell *cell = ms_AtXY(x, y);
+            int posX = GAME_START_X + x * config.grid_size;
+            int posY = GAME_START_Y + y * config.grid_size;
+            if (show_debug || cell->revealed) {
+                if (cell->value == MINE) {
+                    DrawCircle( posX + config.grid_size/2, posY + config.grid_size/2, (float)config.grid_size/3, RED);
                 } else {
-                    char tmp[2] = {0};
-                    sprintf(tmp, "%d", cell.value);
-                    int text_size = MeasureText(tmp, FONT_SIZE);
-                    DrawText(tmp, posX + (GRID_SIZE - text_size) / 2, posY + (GRID_SIZE - FONT_SIZE) / 2, FONT_SIZE, DARKGRAY);
+                    char val[2] = {0};
+                    sprintf(val, "%d", cell->value);
+                    int text_size = MeasureText(val, config.font_size);
+                    DrawText(
+                        val,
+                        posX + (config.grid_size - text_size) / 2,
+                        posY + (config.grid_size - config.font_size) / 2,
+                        config.font_size, DARKGRAY);
                 }
             }
-            if (!show_debug && cell.flagged) {
-                char* txt = "M";
-                int text_size = MeasureText(txt, FONT_SIZE);
-                DrawText(txt, posX + (GRID_SIZE - text_size) / 2, posY + (GRID_SIZE - FONT_SIZE) / 2, FONT_SIZE, RED);
+            if (!show_debug && cell->flagged) {
+                char* flag = "M";
+                int text_size = MeasureText(flag, config.font_size);
+                DrawText(
+                    flag,
+                    posX + (config.grid_size - text_size) / 2,
+                    posY + (config.grid_size - config.font_size) / 2,
+                    config.font_size, RED);
             }
         }
     }
 }
 
-
 void ms_DrawGrid() {
-    for (int i = 0; i < COLUMNS + 1; i++) {
-        Vector2 startPosV = { .x = GAME_START_X + i * GRID_SIZE, .y = GAME_START_Y };
-        Vector2 endPosV = { .x = GAME_START_X + i * GRID_SIZE, .y = GAME_START_Y + GAME_HEIGHT };
+    for (int i = 0; i < game.cols + 1; i++) {
+        Vector2 startPosV = { .x = GAME_START_X + i * config.grid_size, .y = GAME_START_Y };
+        Vector2 endPosV = { .x = GAME_START_X + i * config.grid_size, .y = GAME_START_Y + game.rows * config.grid_size };
         DrawLineEx(startPosV, endPosV, 3, BLACK);
     }
-    for (int i = 0; i < ROWS + 1; i++) {
-        Vector2 startPosH = { .x = GAME_START_X, .y = GAME_START_Y + i * GRID_SIZE };
-        Vector2 endPosH = { .x = GAME_START_X + GAME_WIDTH, .y = GAME_START_Y + i * GRID_SIZE };
+    for (int i = 0; i < game.rows + 1; i++) {
+        Vector2 startPosH = { .x = GAME_START_X, .y = GAME_START_Y + i * config.grid_size };
+        Vector2 endPosH = { .x = GAME_START_X + game.cols * config.grid_size, .y = GAME_START_Y + i * config.grid_size };
         DrawLineEx(startPosH, endPosH, 3, BLACK);
     }
 }
 
 void ms_ExpandZeros(ms_Pos pos) {
-    ms_Pos queue[ROWS * COLUMNS] = { pos };
+    ms_Pos queue[EXPERT_ROWS * EXPERT_COLUMNS] = { pos };
     int index = 0;
 
     while (index >= 0) {
         ms_Pos cur = queue[index--];
-        ms_Cell* cell = &game_data[cur.y * COLUMNS + cur.x];
+        ms_Cell* cell = ms_AtPos(&cur);
         cell->revealed = true;
         for (int dy = -1; dy <= 1; dy++) {
             for (int dx = -1; dx <= 1; dx++) {
@@ -337,10 +421,10 @@ void ms_ExpandZeros(ms_Pos pos) {
                     continue;
                 }
                 ms_Pos new_pos = { .x = cur.x + dx, .y = cur.y + dy };
-                if (new_pos.y < 0 || new_pos.y >= ROWS || new_pos.x < 0 || new_pos.x >= COLUMNS) {
+                if (new_pos.y < 0 || new_pos.y >= game.rows || new_pos.x < 0 || new_pos.x >= game.cols) {
                     continue;
                 }
-                ms_Cell* cell = &game_data[new_pos.y * COLUMNS + new_pos.x];
+                ms_Cell* cell = ms_AtPos(&new_pos);
                 if (!cell->revealed && !cell->flagged && cell->value == 0) {
                     queue[++index] = new_pos;
                 }
@@ -355,40 +439,31 @@ void ms_ExpandZeros(ms_Pos pos) {
 void ms_DrawGameMenu(float game_time) {
     char msg[32];
 
-    sprintf(msg, "Mines Left: %d", mines_left);
+    sprintf(msg, "Mines Left: %d", game.mines_left);
     DrawText(msg, 5, 5, MENU_FONT_SIZE, BLUE);
 
     sprintf(msg, "Time: %03ld", (long)game_time);
     int text_size = MeasureText(msg, MENU_FONT_SIZE);
-    DrawText(msg, WIDTH - text_size - 5, 5, MENU_FONT_SIZE, BLUE);
+    DrawText(msg, config.width - text_size - 5, 5, MENU_FONT_SIZE, BLUE);
 
     strcpy(msg, "Press 'R' to start a new game");
     text_size = MeasureText(msg, MENU_FONT_SIZE);
-    DrawText(msg, (WIDTH - text_size) / 2, GAME_START_Y - MENU_FONT_SIZE - 5, MENU_FONT_SIZE, DARKGRAY);
+    DrawText(msg, (config.width - text_size) / 2, GAME_START_Y - MENU_FONT_SIZE - 5, MENU_FONT_SIZE, DARKGRAY);
 }
 
-void ms_InitGameData() {
-    ms_Pos mines[MINE_COUNT] = {0};
-    size_t cur = 0;
-    while (cur < MINE_COUNT) {
-        int y = rand() % ROWS;
-        int x = rand() % COLUMNS;
-        bool foundNew = true;
-        for (size_t i = 0; i < cur; i++) {
-            ms_Pos mine = mines[i];
-            if (mine.x == x && mine.y == y) {
-                foundNew = false;
-                break;
-            }
-        }
-        if (foundNew) {
-            mines[cur++] = (ms_Pos){ .x = x, .y = y };
-        }
+void ms_InitGameData(ms_Pos *first_click_pos) {
+    ms_Pos mines[EXPERT_MINE_COUNT] = {0};
+    for (size_t i = 0; i < (size_t)game.mines_left; i++) {
+        ms_Pos pos;
+        do {
+            pos.x = rand() % game.cols;
+            pos.y = rand() % game.rows;
+        } while(ms_PosEqual(&pos, first_click_pos) || ms_AtPos(&pos)->value == MINE);
+        mines[i] = pos;
+        ms_AtPos(&pos)->value = MINE;
     }
-
-    for (size_t i = 0; i < MINE_COUNT; i++) {
+    for (size_t i = 0; i < (size_t)game.mines_left; i++) {
         ms_Pos mine = mines[i];
-        game_data[mine.y * COLUMNS + mine.x].value = MINE;
         // mark neighbours
         for (int dy = -1; dy <= 1; dy++) {
             for (int dx = -1; dx <= 1; dx++) {
@@ -396,14 +471,15 @@ void ms_InitGameData() {
                     continue;
                 }
                 ms_Pos new_pos = { .x = mine.x + dx, .y = mine.y + dy };
-                // out-of-bounds
-                if (new_pos.y < 0 || new_pos.y >= ROWS || new_pos.x < 0 || new_pos.x >= COLUMNS) {
+                // check out-of-bounds
+                if (new_pos.y < 0 || new_pos.y >= game.rows || new_pos.x < 0 || new_pos.x >= game.cols) {
                     continue;
                 }
-                if (game_data[new_pos.y * COLUMNS + new_pos.x].value == MINE) {
+                ms_Cell *cell = ms_AtPos(&new_pos);
+                if (cell->value == MINE) {
                     continue;
                 }
-                game_data[new_pos.y * COLUMNS + new_pos.x].value++;
+                cell->value++;
             }
         }
     }
@@ -411,12 +487,16 @@ void ms_InitGameData() {
 
 /*Returns true if game is won, false if not.*/
 bool ms_CheckGameWon() {
-    for (int y = 0; y < ROWS; y++) {
-        for (int x = 0; x < COLUMNS; x++) {
-            ms_Cell cell = game_data[y * COLUMNS + x];
-            if (cell.value != MINE && !cell.revealed) {
-                return false;
+    for (int y = 0; y < game.rows; y++) {
+        for (int x = 0; x < game.cols; x++) {
+            ms_Cell *cell = ms_AtXY(x, y);
+            if (cell->revealed) {
+                continue;
             }
+            if (cell->value == MINE && cell->flagged) {
+                continue;
+            }
+            return false;
         }
     }
     return true;
@@ -452,7 +532,7 @@ void ms_InitMenuItems(ms_MenuItem items[3], int beginn_Y) {
 }
 
 ms_Cell* ms_RevealCell(ms_Pos *pos) {
-    ms_Cell *cell = &game_data[pos->y * COLUMNS + pos->x];
+    ms_Cell *cell = ms_AtPos(pos);
     if (cell->revealed || cell->flagged) {
         return NULL;
     }
@@ -467,10 +547,70 @@ ms_Cell* ms_RevealCell(ms_Pos *pos) {
  *  - +1 flagged a cell, decrease mine_count
  *  - -1 unflagged a cell, increase mine_count*/
 int ms_FlagCell(ms_Pos *pos) {
-    ms_Cell *cell = &game_data[pos->y * COLUMNS + pos->x];
+    ms_Cell *cell = ms_AtPos(pos);
     if (cell->revealed) {
         return 0;
     }
     cell->flagged = !cell->flagged;
     return cell->flagged ? -1 : 1;
+}
+
+void ms_InitGame(int rows, int columns, int mines) {
+    memset(game.game_data, 0, sizeof(game.game_data));
+    game.rows = rows;
+    game.cols = columns;
+    game.mines_left = mines;
+    game.first_click_done = false;
+}
+
+void ms_InitBeginnerGame() {
+    config.width = 2 * PADDING + BEGINNER_COLUMNS * BEGINNER_GRID_SIZE;
+    config.height = 2 * PADDING + BEGINNER_ROWS * BEGINNER_GRID_SIZE;
+    config.grid_size = BEGINNER_GRID_SIZE;
+    config.font_size = BEGINNER_FONT_SIZE;
+    ms_InitGame(BEGINNER_ROWS, BEGINNER_COLUMNS, BEGINNER_MINE_COUNT);
+}
+
+void ms_InitIntermediateGame() {
+    config.width = 2 * PADDING + INTERMEDIATE_COLUMNS * INTERMEDIATE_GRID_SIZE;
+    config.height = 2 * PADDING + INTERMEDIATE_ROWS * INTERMEDIATE_GRID_SIZE;
+    config.grid_size = INTERMEDIATE_GRID_SIZE;
+    config.font_size = INTERMEDIATE_FONT_SIZE;
+    ms_InitGame(INTERMEDIATE_ROWS, INTERMEDIATE_COLUMNS, INTERMEDIATE_MINE_COUNT);
+}
+
+void ms_InitExpertGame() {
+    config.width = 2 * PADDING + EXPERT_COLUMNS * EXPERT_GRID_SIZE;
+    config.height = 2 * PADDING + EXPERT_ROWS * EXPERT_GRID_SIZE;
+    config.grid_size = EXPERT_GRID_SIZE;
+    config.font_size = EXPERT_FONT_SIZE;
+    ms_InitGame(EXPERT_ROWS, EXPERT_COLUMNS, EXPERT_MINE_COUNT);
+}
+
+int ms_GetGameStatusStartY() {
+    return GAME_START_Y + config.height + PADDING;
+}
+
+bool ms_PosEqual(ms_Pos *p1, ms_Pos *p2) {
+    return p1->x == p2->x && p1->y == p2->y;
+}
+
+ms_Cell *ms_AtPos(ms_Pos *pos) {
+    return &game.game_data[pos->y * game.cols + pos->x];
+}
+
+ms_Cell *ms_AtXY(int x, int y) {
+    return &game.game_data[y * game.cols + x];
+}
+
+int ms_GetTotalWindowWidth() {
+    return config.width + 2 * PADDING;
+}
+
+int ms_GetTotalWindowHeight() {
+    return GAME_MENU_HEIGHT + config.height + 2 * PADDING + GAME_STATUS_HEIGHT;
+}
+
+inline ms_Pos ms_PosXY(int x, int y) {
+    return (ms_Pos) { .x = x, .y = y };
 }
