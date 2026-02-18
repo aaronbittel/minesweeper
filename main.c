@@ -106,8 +106,6 @@ bool show_debug = false;
 ms_Game game = {0};
 ms_RenderConfig config = {0};
 
-long start_time;
-
 void ms_InitGame(int rows, int columns, int mines);
 void ms_InitBeginnerGame();
 void ms_InitIntermediateGame();
