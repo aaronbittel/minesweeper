@@ -7,7 +7,7 @@
 
 #include "raylib.h"
 
-#define MENU_HEIGHT        60
+#define GAME_MENU_HEIGHT        60
 
 #define GRID_SIZE          40
 #define ROWS               9
@@ -18,19 +18,27 @@
 
 #define PADDING            10
 
-#define GAME_START_Y       ((MENU_HEIGHT) + (PADDING))
+#define GAME_START_Y       ((GAME_MENU_HEIGHT) + (PADDING))
 #define GAME_START_X       (PADDING)
 
 #define GAME_STATUS_HEIGHT 60
 #define GAME_STATUS_START_Y ((GAME_START_Y) + (GAME_HEIGHT))
 
 #define WIDTH              ((GAME_WIDTH) + 2 * (PADDING))
-#define HEIGHT             ((GAME_HEIGHT) + 2 * (PADDING) + (MENU_HEIGHT) + (GAME_STATUS_HEIGHT))
+#define HEIGHT             ((GAME_HEIGHT) + 2 * (PADDING) + (GAME_MENU_HEIGHT) + (GAME_STATUS_HEIGHT))
 
 #define FONT_SIZE          32
 #define MENU_FONT_SIZE     24
 
 #define MINE               -1
+
+#define MENU_WIDTH 400
+#define MENU_HEIGHT 300
+
+typedef struct {
+    int rows;
+    int cols;
+} ms_Game;
 
 typedef struct {
     int  value;
@@ -43,6 +51,7 @@ typedef struct {
 } ms_Pos;
 
 typedef enum {
+    ms_MENU,
     ms_PLAYING,
     ms_GAME_OVER,
     ms_GAME_WON,
@@ -50,7 +59,15 @@ typedef enum {
     ms_FIRST_CLICK_MINE,
 } ms_GameState;
 
-ms_GameState game_state = ms_PLAYING;
+typedef struct {
+    char* name;
+    int text_size;
+    int y;
+    Color normal;
+    Color highlight;
+} ms_MenuItem;
+
+ms_GameState game_state = ms_MENU;
 ms_Cell game_data[ROWS * COLUMNS] = {0};
 bool show_debug = false;
 int mines_left = MINE_COUNT;
@@ -63,6 +80,8 @@ void ms_InitGameData();
 void ms_DrawGrid();
 void ms_DrawGameState();
 void ms_DrawMenu();
+void ms_DrawItem(ms_MenuItem* item, bool selected, bool active);
+void ms_InitMenuItems(ms_MenuItem items[3], int beginn_Y);
 void ms_ExpandZeros(ms_Pos pos);
 bool ms_MouseGridPos(ms_Pos* pos);
 bool ms_CheckGameWon();
@@ -71,8 +90,29 @@ int main() {
     srand(time(NULL));
     ms_InitGameData();
 
-    InitWindow(WIDTH, HEIGHT, "Minesweeper");
+    InitWindow(MENU_WIDTH, MENU_HEIGHT, "Minesweeper");
     SetTargetFPS(60);
+
+    char* menu_title = "Menu";
+    int menu_title_size = MeasureText(menu_title, FONT_SIZE);
+
+    char* sub_title = "Choose the difficulty";
+    int sub_title_size = MeasureText(sub_title, MENU_FONT_SIZE);
+
+    int current_Y = 30;
+    int menu_title_Y = current_Y;
+    current_Y += FONT_SIZE + 20;
+    int submenu_title_Y = current_Y;
+    current_Y += MENU_FONT_SIZE + 40;
+
+    ms_MenuItem items[3] = {0};
+    ms_InitMenuItems(items, current_Y);
+    bool locked_in = false;
+
+    int selected_item = 0;
+
+    float highlight_timer = 0.0f;
+    const float highligh_duration = 0.12f;
 
     start_time = time(NULL);
 
@@ -84,11 +124,45 @@ int main() {
         BeginDrawing();
 
         ClearBackground(RAYWHITE);
-        ms_DrawMenu();
-        ms_DrawGrid();
-        ms_DrawGameState();
+
+        if (game_state != ms_MENU) {
+            ms_DrawMenu();
+            ms_DrawGrid();
+            ms_DrawGameState();
+        }
 
         switch (game_state) {
+            case ms_MENU:
+                {
+                    ClearBackground(RAYWHITE);
+                    DrawText(menu_title, (MENU_WIDTH-menu_title_size)/2, menu_title_Y, FONT_SIZE, RED);
+                    DrawText(sub_title, (MENU_WIDTH-sub_title_size)/2, submenu_title_Y, MENU_FONT_SIZE, DARKGRAY);
+
+
+                    if (IsKeyPressed(KEY_ENTER)) {
+                        highlight_timer = highligh_duration;
+                        locked_in = true;
+                    }
+
+                    if (locked_in) highlight_timer -= GetFrameTime();
+                    if (highlight_timer < 0) {
+                        highlight_timer = 0;
+                        locked_in = false;
+                        SetWindowSize(WIDTH, HEIGHT);
+                        game_state = ms_PLAYING;
+                    }
+
+                    int mouseY = GetMouseY();
+                    for (size_t i = 0; i < 3; i++) {
+                        if (mouseY >= items[i].y-MENU_FONT_SIZE/2 && mouseY <= items[i].y + MENU_FONT_SIZE*2) {
+                            selected_item = i;
+                        }
+                    }
+
+                    for (size_t i = 0; i < 3; i++) {
+                        ms_DrawItem(&items[i], selected_item == i, highlight_timer > 0);
+                    }
+                } break;
             case ms_PLAYING:
                 {
                     ms_Pos grid_pos = {0};
@@ -197,6 +271,7 @@ int main() {
         }
     }
     CloseWindow();
+    return 0;
 }
 
 /*Returns true if mouse is inside the grid and sets the ms_Pos struct accordingly,
@@ -351,4 +426,33 @@ bool ms_CheckGameWon() {
         }
     }
     return true;
+}
+
+void ms_DrawItem(ms_MenuItem* item, bool selected, bool active) {
+    const int OUTER_ELLIPSE_H = 100;
+    const int OUTER_ELLIPSE_V = 20;
+    const int INNER_ELLIPSE_H = 95;
+    const int INNER_ELLIPSE_V = 17;
+
+    if (selected) {
+        Color border_color = active ? item->normal : RAYWHITE;
+        DrawEllipse(MENU_WIDTH/2, item->y+MENU_FONT_SIZE/2, OUTER_ELLIPSE_H, OUTER_ELLIPSE_V, BLACK);
+        DrawEllipse(MENU_WIDTH/2, item->y+MENU_FONT_SIZE/2, INNER_ELLIPSE_H, INNER_ELLIPSE_V, border_color);
+    }
+
+    Color font_color = (selected && active) ? item->highlight : item->normal;
+    DrawText(item->name, (MENU_WIDTH-item->text_size)/2, item->y, MENU_FONT_SIZE, font_color);
+}
+
+void ms_InitMenuItems(ms_MenuItem items[3], int beginn_Y) {
+    char* names[] = { "Beginner", "Intermediate", "Expert"};
+    Color colors[] = { GREEN, BLUE, RED };
+    for (size_t i = 0; i < 3; i++) {
+        items[i].name = names[i];
+        items[i].text_size = MeasureText(names[i], MENU_FONT_SIZE);
+        items[i].normal = colors[i];
+        items[i].highlight = BLACK;
+        items[i].y = beginn_Y;
+        beginn_Y += MENU_FONT_SIZE + 25;
+    }
 }
