@@ -129,8 +129,8 @@ bool ms_PosEqual(ms_Pos *p1, ms_Pos *p2);
 ms_Cell *ms_AtPos(ms_Pos *pos);
 ms_Cell *ms_AtXY(int x, int y);
 
-int ms_GetTotalWindowWidth();
-int ms_GetTotalWindowHeight();
+int ms_GetTotalGameWindowWidth();
+int ms_GetTotalGameWindowHeight();
 
 inline ms_Pos ms_PosXY(int x, int y);
 
@@ -208,8 +208,8 @@ int main() {
                         int monitor_width =  GetMonitorWidth(monitor);
                         int monitor_height = GetMonitorHeight(monitor);
                         SetWindowPosition(
-                            (monitor_width - ms_GetTotalWindowWidth()) / 2,
-                            (monitor_height - ms_GetTotalWindowHeight()) / 2
+                            (monitor_width - ms_GetTotalGameWindowWidth()) / 2,
+                            (monitor_height - ms_GetTotalGameWindowHeight()) / 2
                         );
                         current_screen = ms_ScreenGame;
                         game_state = ms_PLAYING;
@@ -599,18 +599,20 @@ ms_Cell *ms_AtPos(ms_Pos *pos) {
     return &game.game_data[pos->y * game.cols + pos->x];
 }
 
-ms_Cell *ms_AtXY(int x, int y) {
+inline ms_Cell *ms_AtXY(int x, int y) {
     return &game.game_data[y * game.cols + x];
-}
-
-int ms_GetTotalWindowWidth() {
-    return config.width + 2 * PADDING;
-}
-
-int ms_GetTotalWindowHeight() {
-    return GAME_MENU_HEIGHT + config.height + 2 * PADDING + GAME_STATUS_HEIGHT;
 }
 
 inline ms_Pos ms_PosXY(int x, int y) {
     return (ms_Pos) { .x = x, .y = y };
 }
+
+int ms_GetTotalGameWindowWidth() {
+    return config.width + 2 * PADDING;
+}
+
+int ms_GetTotalGameWindowHeight() {
+    return GAME_MENU_HEIGHT + config.height + 2 * PADDING + GAME_STATUS_HEIGHT;
+}
+
+
