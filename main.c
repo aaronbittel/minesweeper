@@ -137,6 +137,7 @@ inline ms_Pos ms_PosXY(int x, int y);
 
 int main() {
     InitWindow(MENU_WIDTH, MENU_HEIGHT, "Minesweeper");
+    SetExitKey(KEY_Q);
     SetTargetFPS(60);
 
     // game menu
@@ -217,6 +218,18 @@ int main() {
                 } break;
             case ms_ScreenGame:
                 {
+                    if (IsKeyPressed(KEY_ESCAPE)) {
+                        int monitor = GetCurrentMonitor();
+                        int monitor_width =  GetMonitorWidth(monitor);
+                        int monitor_height = GetMonitorHeight(monitor);
+                        SetWindowPosition(
+                            (monitor_width - MENU_WIDTH) / 2,
+                            (monitor_height - MENU_HEIGHT) / 2
+                        );
+                        SetWindowSize(MENU_WIDTH, MENU_HEIGHT);
+                        current_screen = ms_ScreenMenu;
+                        break;
+                    }
                     if (IsKeyPressed(KEY_R)) {
                         game_state = ms_NEW_GAME;
                     }
