@@ -127,6 +127,7 @@ bool ms_GetMouseGridPos(ms_Pos* pos);
 bool ms_CheckGameWon();
 int ms_GetGameStatusStartY();
 bool ms_PosEqual(ms_Pos *p1, ms_Pos *p2);
+bool ms_PosIsNeighbour(ms_Pos *origin, ms_Pos *pos);
 ms_Cell *ms_AtPos(ms_Pos *pos);
 ms_Cell *ms_AtXY(int x, int y);
 
@@ -477,7 +478,7 @@ void ms_InitGameData(ms_Pos *first_click_pos) {
         do {
             pos.x = rand() % game.cols;
             pos.y = rand() % game.rows;
-        } while(ms_PosEqual(&pos, first_click_pos) || ms_AtPos(&pos)->value == MINE);
+        } while(ms_PosIsNeighbour(&pos, first_click_pos) || ms_AtPos(&pos)->value == MINE);
         mines[i] = pos;
         ms_AtPos(&pos)->value = MINE;
     }
@@ -612,6 +613,13 @@ int ms_GetGameStatusStartY() {
 
 bool ms_PosEqual(ms_Pos *p1, ms_Pos *p2) {
     return p1->x == p2->x && p1->y == p2->y;
+}
+
+// Returns true if `pos` is the origin or one of the 8 surrounding cells
+bool ms_PosIsNeighbour(ms_Pos *origin, ms_Pos *pos) {
+    int dx = abs(origin->x-pos->x);
+    int dy = abs(origin->y-pos->y);
+    return (dx <= 1 && dy <= 1);
 }
 
 ms_Cell *ms_AtPos(ms_Pos *pos) {
