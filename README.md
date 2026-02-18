@@ -21,4 +21,15 @@ make
 
 ## Showcase
 
-![Minesweeper-Showcase](./showcase.png)
+### Menu
+
+- choose one of the following difficulties:
+    - Beginner: 9x9 (10 mines)
+    - Intermediate: 16x16 (40 mines)
+    - Expert: 30*16 (99 mines)
+
+![Menu-Image](./menu.png)
+
+### Game Window
+
+![Gameplay-Image](./showcase.png)
