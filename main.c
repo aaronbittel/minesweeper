@@ -1,3 +1,4 @@
+#include <assert.h>
 #include <string.h>
 #include <stdio.h>
 #include <stdlib.h>
@@ -35,6 +36,8 @@
 #define MENU_WIDTH 400
 #define MENU_HEIGHT 300
 
+#define ARRAY_LEN(arr) (sizeof(arr) / sizeof((arr)[0]))
+
 typedef struct {
     int rows;
     int cols;
@@ -51,12 +54,15 @@ typedef struct {
 } ms_Pos;
 
 typedef enum {
-    ms_MENU,
+    ms_ScreenMenu = 0,
+    ms_ScreenGame,
+} ms_GameScreen;
+
+typedef enum {
     ms_PLAYING,
     ms_GAME_OVER,
     ms_GAME_WON,
     ms_NEW_GAME,
-    ms_FIRST_CLICK_MINE,
 } ms_GameState;
 
 typedef struct {
@@ -67,7 +73,8 @@ typedef struct {
     Color highlight;
 } ms_MenuItem;
 
-ms_GameState game_state = ms_MENU;
+ms_GameState game_state = ms_PLAYING;
+ms_GameScreen current_screen = ms_ScreenMenu;
 ms_Cell game_data[ROWS * COLUMNS] = {0};
 bool show_debug = false;
 int mines_left = MINE_COUNT;
@@ -79,19 +86,21 @@ ms_Pos* first_cell = NULL;
 void ms_InitGameData();
 void ms_DrawGrid();
 void ms_DrawGameState();
-void ms_DrawMenu();
+void ms_DrawGameMenu(float game_time);
 void ms_DrawItem(ms_MenuItem* item, bool selected, bool active);
 void ms_InitMenuItems(ms_MenuItem items[3], int beginn_Y);
+ms_Cell* ms_RevealCell(ms_Pos *pos);
+int ms_FlagCell(ms_Pos *pos);
 void ms_ExpandZeros(ms_Pos pos);
-bool ms_MouseGridPos(ms_Pos* pos);
+bool ms_GetMouseGridPos(ms_Pos* pos);
 bool ms_CheckGameWon();
 
-int main() {
-    srand(time(NULL));
-    ms_InitGameData();
 
+int main() {
     InitWindow(MENU_WIDTH, MENU_HEIGHT, "Minesweeper");
     SetTargetFPS(60);
+
+    // game menu
 
     char* menu_title = "Menu";
     int menu_title_size = MeasureText(menu_title, FONT_SIZE);
@@ -109,174 +118,159 @@ int main() {
     ms_InitMenuItems(items, current_Y);
     bool locked_in = false;
 
-    int selected_item = 0;
+    size_t selected_item = 0;
 
     float highlight_timer = 0.0f;
     const float highligh_duration = 0.12f;
 
-    start_time = time(NULL);
+    // gameplay
+
+    srand(time(NULL));
+    ms_InitGameData();
+
+    ms_Pos grid_pos = {0};
+    bool mouse_inside_grid = false;
+    float game_time = 0.f;
 
     while (!WindowShouldClose()) {
-        if (IsKeyPressed(KEY_R)) {
-            game_state = ms_NEW_GAME;
-        }
-
-        BeginDrawing();
-
-        ClearBackground(RAYWHITE);
-
-        if (game_state != ms_MENU) {
-            ms_DrawMenu();
-            ms_DrawGrid();
-            ms_DrawGameState();
-        }
-
-        switch (game_state) {
-            case ms_MENU:
+        switch (current_screen) {
+            case ms_ScreenMenu:
                 {
-                    ClearBackground(RAYWHITE);
-                    DrawText(menu_title, (MENU_WIDTH-menu_title_size)/2, menu_title_Y, FONT_SIZE, RED);
-                    DrawText(sub_title, (MENU_WIDTH-sub_title_size)/2, submenu_title_Y, MENU_FONT_SIZE, DARKGRAY);
-
-
-                    if (IsKeyPressed(KEY_ENTER)) {
+                    int mouseY = GetMouseY();
+                    for (size_t i = 0; i < ARRAY_LEN(items); i++) {
+                        if (mouseY >= items[i].y-MENU_FONT_SIZE/2 &&
+                            mouseY <= items[i].y + MENU_FONT_SIZE*2)
+                        {
+                            selected_item = i;
+                        }
+                    }
+                    if (IsKeyPressed(KEY_ENTER) ||
+                        IsMouseButtonPressed(MOUSE_LEFT_BUTTON))
+                    {
                         highlight_timer = highligh_duration;
                         locked_in = true;
                     }
-
                     if (locked_in) highlight_timer -= GetFrameTime();
                     if (highlight_timer < 0) {
                         highlight_timer = 0;
                         locked_in = false;
                         SetWindowSize(WIDTH, HEIGHT);
+                        current_screen = ms_ScreenGame;
                         game_state = ms_PLAYING;
                     }
-
-                    int mouseY = GetMouseY();
-                    for (size_t i = 0; i < 3; i++) {
-                        if (mouseY >= items[i].y-MENU_FONT_SIZE/2 && mouseY <= items[i].y + MENU_FONT_SIZE*2) {
-                            selected_item = i;
-                        }
+                } break;
+            case ms_ScreenGame:
+                {
+                    if (IsKeyPressed(KEY_R)) {
+                        game_state = ms_NEW_GAME;
                     }
+                    if (IsKeyPressed(KEY_G)) {
+                        show_debug = !show_debug;
+                    }
+                    switch (game_state) {
+                        case ms_PLAYING:
+                            {
+                                game_time += GetFrameTime();
+                                mouse_inside_grid = ms_GetMouseGridPos(&grid_pos);
+                                if (mouse_inside_grid) {
+                                    if (IsMouseButtonPressed(MOUSE_LEFT_BUTTON)) {
+                                        ms_Cell *cell = ms_RevealCell(&grid_pos);
+                                        if (cell) {
+                                            if (cell->value == 0) {
+                                                ms_ExpandZeros(grid_pos);
+                                            } else if (cell->value == MINE) {
+                                                game_state = ms_GAME_OVER;
+                                            }
+                                        }
+                                        if (ms_CheckGameWon()) {
+                                            game_state = ms_GAME_WON;
+                                        }
+                                    }
+                                    if (IsMouseButtonPressed(MOUSE_RIGHT_BUTTON) ||
+                                        IsKeyPressed(KEY_M))
+                                    {
+                                        mines_left += ms_FlagCell(&grid_pos);
+                                    }
+                                }
+                            } break;
+                        case ms_GAME_OVER:
+                        case ms_GAME_WON:
+                            {
+                            } break;
+                        case ms_NEW_GAME:
+                            {
+                            } break;
+                    }
+                } break;
+            default: assert(0 && "unreachable");
+        }
 
+        BeginDrawing();
+        ClearBackground(RAYWHITE);
+
+        switch (current_screen) {
+            case ms_ScreenMenu:
+                {
+                    DrawText(
+                        menu_title,
+                        (MENU_WIDTH-menu_title_size)/2,
+                        menu_title_Y,
+                        FONT_SIZE, RED);
+                    DrawText(sub_title,
+                             (MENU_WIDTH-sub_title_size)/2,
+                             submenu_title_Y,
+                             MENU_FONT_SIZE, DARKGRAY);
                     for (size_t i = 0; i < 3; i++) {
                         ms_DrawItem(&items[i], selected_item == i, highlight_timer > 0);
                     }
                 } break;
-            case ms_PLAYING:
+            case ms_ScreenGame:
                 {
-                    ms_Pos grid_pos = {0};
-                    if (ms_MouseGridPos(&grid_pos)) {
-                        ms_Cell* cell = &game_data[grid_pos.y * COLUMNS + grid_pos.x];
-                        if (!cell->revealed && !cell->flagged) {
-                            DrawRectangle(GAME_START_X+grid_pos.x*GRID_SIZE, GAME_START_Y+grid_pos.y*GRID_SIZE, GRID_SIZE, GRID_SIZE, LIGHTGRAY);
-                        }
-
-                        if (IsMouseButtonPressed(MOUSE_LEFT_BUTTON) && !cell->revealed && !cell->flagged) {
-                            if (first_cell == NULL && cell->value == MINE) {
-                                first_cell = &grid_pos;
-                                game_state = ms_FIRST_CLICK_MINE;
-                                break;
-                            }
-                            first_cell = &grid_pos;
-                            cell->revealed = true;
-                            // TODO: handle game over
-                            if (cell->value == MINE) {
-                                game_state = ms_GAME_OVER;
-                                for (int y = 0; y < ROWS; y++) {
-                                    for (int x = 0; x < COLUMNS; x++) {
-                                        ms_Cell* cell = &game_data[y * COLUMNS + x];
-                                        if (cell->value == MINE) {
-                                            cell->revealed = true;
-                                        }
+                    ms_DrawGameMenu(game_time);
+                    ms_DrawGrid();
+                    ms_DrawGameState();
+                    switch(game_state) {
+                        case ms_PLAYING:
+                            {
+                                if (mouse_inside_grid) {
+                                    ms_Cell* cell = &game_data[grid_pos.y * COLUMNS + grid_pos.x];
+                                    if (!cell->revealed && !cell->flagged) {
+                                        DrawRectangle(GAME_START_X+grid_pos.x*GRID_SIZE, GAME_START_Y+grid_pos.y*GRID_SIZE, GRID_SIZE, GRID_SIZE, LIGHTGRAY);
                                     }
                                 }
-                            } else if (cell->value == 0) {
-                                ms_ExpandZeros(grid_pos);
-                            }
-                        }
-
-                        if (IsKeyPressed(KEY_M) || IsMouseButtonPressed(MOUSE_RIGHT_BUTTON)) {
-                            if (!cell->revealed) {
-                                cell->flagged = !cell->flagged;
-                                mines_left += cell->flagged ? -1 : 1;
-                            }
-                        }
+                            } break;
+                        case ms_GAME_OVER:
+                            {
+                                char* msg = "Game Over!";
+                                int text_size = MeasureText(msg, FONT_SIZE);
+                                DrawText(msg, (WIDTH - text_size) / 2, GAME_STATUS_START_Y + (HEIGHT - GAME_STATUS_START_Y - FONT_SIZE) / 2, FONT_SIZE, RED);
+                            } break;
+                        case ms_GAME_WON:
+                            {
+                                char* msg = "Congrats, Game Won!";
+                                int text_size = MeasureText(msg, FONT_SIZE);
+                                DrawText(msg, (WIDTH - text_size) / 2 , GAME_STATUS_START_Y + (HEIGHT - GAME_STATUS_START_Y - FONT_SIZE) / 2, FONT_SIZE, GREEN);
+                            } break;
+                        case ms_NEW_GAME:
+                            {
+                                game_time = 0;
+                                game_state = ms_PLAYING;
+                            } break;
                     }
-
-                    if (IsKeyPressed(KEY_G)) {
-                        show_debug = !show_debug;
-                    }
-                }
-                break;
-            case ms_GAME_OVER:
-                {
-                    if (update_time) {
-                        end_time = time(NULL);
-                        update_time = false;
-                    }
-                    char* msg = "Game Over!";
-                    int text_size = MeasureText(msg, FONT_SIZE);
-                    DrawText(msg, (WIDTH - text_size) / 2, GAME_STATUS_START_Y + (HEIGHT - GAME_STATUS_START_Y - FONT_SIZE) / 2, FONT_SIZE, RED);
-                }
-                break;
-            case ms_GAME_WON:
-                {
-                    if (update_time) {
-                        end_time = time(NULL);
-                        update_time = false;
-                    }
-                    char* msg = "Congrats, Game Won!";
-                    int text_size = MeasureText(msg, FONT_SIZE);
-                    DrawText(msg, (WIDTH - text_size) / 2 , GAME_STATUS_START_Y + (HEIGHT - GAME_STATUS_START_Y - FONT_SIZE) / 2, FONT_SIZE, GREEN);
-                }
-                break;
-            case ms_NEW_GAME:
-                {
-                    memset(game_data, 0, sizeof(game_data));
-                    ms_InitGameData();
-                    start_time = time(NULL);
-                    game_state = ms_PLAYING;
-                    end_time = 0;
-                    update_time = true;
-                    mines_left = MINE_COUNT;
-                    first_cell = NULL;
-                }
-                break;
-            case ms_FIRST_CLICK_MINE:
-                {
-                    do {
-                        memset(game_data, 0, sizeof(game_data));
-                        ms_InitGameData();
-                        start_time = time(NULL);
-                        game_state = ms_PLAYING;
-                        end_time = 0;
-                        update_time = true;
-                        mines_left = MINE_COUNT;
-                    } while (game_data[first_cell->y * COLUMNS + first_cell->x].value == MINE);
-                    ms_Cell* cell = &game_data[first_cell->y * COLUMNS + first_cell->x];
-                    cell->revealed = true;
-                    if (cell->value == 0) {
-                        ms_ExpandZeros(*first_cell);
-                    }
-                    first_cell = NULL;
-                }
-                break;
+                } break;
+            default: assert(0 && "unreachable");
         }
 
         EndDrawing();
-
-        if (ms_CheckGameWon()) {
-            game_state = ms_GAME_WON;
-        }
     }
+
     CloseWindow();
     return 0;
 }
 
 /*Returns true if mouse is inside the grid and sets the ms_Pos struct accordingly,
  * otherwise returns false.*/
-bool ms_MouseGridPos(ms_Pos* grid_pos) {
+bool ms_GetMouseGridPos(ms_Pos* grid_pos) {
     Vector2 mouse_pos = GetMousePosition();
     mouse_pos.y -= GAME_START_Y;
     mouse_pos.x -= GAME_START_X;
@@ -358,14 +352,13 @@ void ms_ExpandZeros(ms_Pos pos) {
     }
 }
 
-void ms_DrawMenu() {
+void ms_DrawGameMenu(float game_time) {
     char msg[32];
 
     sprintf(msg, "Mines Left: %d", mines_left);
     DrawText(msg, 5, 5, MENU_FONT_SIZE, BLUE);
 
-    long duration = (end_time ? end_time : time(NULL)) - start_time;
-    sprintf(msg, "Time: %03ld", duration);
+    sprintf(msg, "Time: %03ld", (long)game_time);
     int text_size = MeasureText(msg, MENU_FONT_SIZE);
     DrawText(msg, WIDTH - text_size - 5, 5, MENU_FONT_SIZE, BLUE);
 
@@ -416,6 +409,7 @@ void ms_InitGameData() {
     }
 }
 
+/*Returns true if game is won, false if not.*/
 bool ms_CheckGameWon() {
     for (int y = 0; y < ROWS; y++) {
         for (int x = 0; x < COLUMNS; x++) {
@@ -455,4 +449,28 @@ void ms_InitMenuItems(ms_MenuItem items[3], int beginn_Y) {
         items[i].y = beginn_Y;
         beginn_Y += MENU_FONT_SIZE + 25;
     }
+}
+
+ms_Cell* ms_RevealCell(ms_Pos *pos) {
+    ms_Cell *cell = &game_data[pos->y * COLUMNS + pos->x];
+    if (cell->revealed || cell->flagged) {
+        return NULL;
+    }
+    cell->revealed = true;
+    return cell;
+}
+
+/*Flag a cell if possible.
+ * Returns how the mine_count need to change.
+ * Update the mine_count with `mine_count += ms_FlagCell()`.
+ *  - 0  invalid cell, dont change mine_count
+ *  - +1 flagged a cell, decrease mine_count
+ *  - -1 unflagged a cell, increase mine_count*/
+int ms_FlagCell(ms_Pos *pos) {
+    ms_Cell *cell = &game_data[pos->y * COLUMNS + pos->x];
+    if (cell->revealed) {
+        return 0;
+    }
+    cell->flagged = !cell->flagged;
+    return cell->flagged ? -1 : 1;
 }
