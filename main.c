@@ -16,6 +16,7 @@
 
 #define FONT_SIZE          32
 #define MENU_FONT_SIZE     24
+#define SUB_MENU_FONT_SIZE 20
 
 #define BEGINNER_GRID_SIZE   40
 #define BEGINNER_FONT_SIZE FONT_SIZE
@@ -450,18 +451,23 @@ void ms_ExpandZeros(ms_Pos pos) {
 }
 
 void ms_DrawGameMenu(float game_time) {
-    char msg[32];
+    const int BUF_LEN = 64;
+    char msg[BUF_LEN];
 
-    sprintf(msg, "Mines Left: %d", game.mines_left);
-    DrawText(msg, 5, 5, MENU_FONT_SIZE, BLUE);
+    snprintf(msg, BUF_LEN, "Mines Left: %d", game.mines_left);
+    DrawText(msg, PADDING, PADDING, MENU_FONT_SIZE, BLUE);
 
-    sprintf(msg, "Time: %03ld", (long)game_time);
+    snprintf(msg, BUF_LEN, "Time: %03ld", (long)game_time);
     int text_size = MeasureText(msg, MENU_FONT_SIZE);
-    DrawText(msg, config.width - text_size - 5, 5, MENU_FONT_SIZE, BLUE);
+    DrawText(msg, config.width - text_size - PADDING, PADDING, MENU_FONT_SIZE, BLUE);
 
-    strcpy(msg, "Press 'R' to start a new game");
-    text_size = MeasureText(msg, MENU_FONT_SIZE);
-    DrawText(msg, (config.width - text_size) / 2, GAME_START_Y - MENU_FONT_SIZE - 5, MENU_FONT_SIZE, DARKGRAY);
+    strncpy(msg, "R - New Game | ECS - Menu | Q - Quit", BUF_LEN);
+    text_size = MeasureText(msg, SUB_MENU_FONT_SIZE);
+    DrawText(
+        msg,
+        (config.width - text_size) / 2,
+        GAME_START_Y - SUB_MENU_FONT_SIZE - PADDING,
+        SUB_MENU_FONT_SIZE, DARKGRAY);
 }
 
 void ms_InitGameData(ms_Pos *first_click_pos) {
@@ -627,5 +633,3 @@ int ms_GetTotalGameWindowWidth() {
 int ms_GetTotalGameWindowHeight() {
     return GAME_MENU_HEIGHT + config.height + 2 * PADDING + GAME_STATUS_HEIGHT;
 }
-
-
