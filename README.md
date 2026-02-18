@@ -28,8 +28,8 @@ make
     - Intermediate: 16x16 (40 mines)
     - Expert: 30*16 (99 mines)
 
-![Menu-Image](./menu.png)
+![Menu-Image](./assets/menu.png)
 
 ### Game Window
 
-![Gameplay-Image](./showcase.png)
+![Gameplay-Image](./assets/showcase.png)
